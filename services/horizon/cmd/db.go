@@ -320,7 +320,8 @@ func reingest(cmd reingestType, args ...int32) {
 		loadMean := time.Duration(i.Metrics.LoadLedgerTimer.Mean())
 		ingestMean := time.Duration(i.Metrics.IngestLedgerTimer.Mean())
 		clearMean := time.Duration(i.Metrics.ClearLedgerTimer.Mean())
-		hlog.WithField("count", count).
+		hlog.WithField("version", apkg.Version()).
+      WithField("count", count).
 			WithField("rate", rate).
 			WithField("means", fmt.Sprintf("load: %s clear: %s ingest: %s", loadMean, clearMean, ingestMean)).
 			Infof("reingest: %s", stage)
@@ -409,6 +410,7 @@ func reingestRange(i *ingest.System, from, to int32) error {
 		}
 
 		localLog := hlog.WithFields(hlog.F{
+      "version": apkg.Version(),
 			"id":   workerID,
 			"from": lr.from,
 			"to":   lr.to,
@@ -437,7 +439,8 @@ func reingestRange(i *ingest.System, from, to int32) error {
 				return
 			case <-ticker.C:
 			}
-			hlog.WithField("progress", float32(allJobs-pool.WorkSize())/float32(allJobs)*100).Info("Work status")
+			hlog.WithField("version", apkg.Version()).
+        WithField("progress", float32(allJobs-pool.WorkSize())/float32(allJobs)*100).Info("Work status")
 		}
 	}()
 	pool.Start(workers)
