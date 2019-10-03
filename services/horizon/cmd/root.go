@@ -39,10 +39,10 @@ const maxDBPingAttempts = 30
 func validateBothOrNeither(option1, option2 string) {
 	arg1, arg2 := viper.GetString(option1), viper.GetString(option2)
 	if arg1 != "" && arg2 == "" {
-		stdLog.Fatalf("Invalid config: %s = %s, but corresponding option %s is not configured", option1, arg1, option2)
+		stdLog.Fatalf("version=%s Invalid config: %s = %s, but corresponding option %s is not configured", apkg.Version(), option1, arg1, option2)
 	}
 	if arg1 == "" && arg2 != "" {
-		stdLog.Fatalf("Invalid config: %s = %s, but corresponding option %s is not configured", option2, arg2, option1)
+		stdLog.Fatalf("version=%s Invalid config: %s = %s, but corresponding option %s is not configured",apkg.Version() , option2, arg2, option1)
 	}
 }
 
@@ -53,27 +53,27 @@ func pingDB(db *sql.DB) {
 		}
 		time.Sleep(time.Second)
 		if attempt+1 < maxDBPingAttempts {
-			stdLog.Println("Waiting for a horizon DB connection...")
+			stdLog.Println("version=%s Waiting for a horizon DB connection...", apkg.Version())
 		}
 	}
 
-	stdLog.Fatalf("failed to connect to horizon DB after %v attempts", maxDBPingAttempts)
+	stdLog.Fatalf("version=%s failed to connect to horizon DB after %v attempts", apkg.Version(), maxDBPingAttempts)
 }
 
 func applyMigrations() {
 	db, err := sql.Open("postgres", config.DatabaseURL)
 	if err != nil {
-		stdLog.Fatalf("could not connect to horizon db: %v", err)
+		stdLog.Fatalf("version=%s could not connect to horizon db: %v", apkg.Version(), err)
 	}
 	defer db.Close()
 	pingDB(db)
 
 	numMigrations, err := schema.Migrate(db, schema.MigrateUp, 0)
 	if err != nil {
-		stdLog.Fatalf("could not apply migrations: %v", err)
+		stdLog.Fatalf("version=%s could not apply migrations: %v", apkg.Version(), err)
 	}
 	if numMigrations > 0 {
-		stdLog.Printf("successfully applied %v horizon migrations\n", numMigrations)
+		stdLog.Printf("version=%s successfully applied %v horizon migrations\n", apkg.Version(), numMigrations)
 	}
 }
 
@@ -81,16 +81,16 @@ func applyMigrations() {
 func checkMigrations() {
 	migrationsToApplyUp := schema.GetMigrationsUp(config.DatabaseURL)
 	if len(migrationsToApplyUp) > 0 {
-		stdLog.Printf(`There are %v migrations to apply in the "up" direction.`, len(migrationsToApplyUp))
-		stdLog.Printf("The necessary migrations are: %v", migrationsToApplyUp)
-		stdLog.Printf("A database migration is required to run this version (%v) of Horizon. Run \"horizon db migrate up\" to update your DB. Consult the Changelog (https://github.com/stellar/go/blob/master/services/horizon/CHANGELOG.md) for more information.", apkg.Version())
+		stdLog.Printf(`version=%s There are %v migrations to apply in the "up" direction.`, apkg.Version(), len(migrationsToApplyUp))
+		stdLog.Printf("version=%s The necessary migrations are: %v", apkg.Version(), migrationsToApplyUp)
+		stdLog.Printf("version=%s A database migration is required to run this version (%v) of Horizon. Run \"horizon db migrate up\" to update your DB. Consult the Changelog (https://github.com/stellar/go/blob/master/services/horizon/CHANGELOG.md) for more information.", apkg.Version(), apkg.Version())
 		os.Exit(1)
 	}
 
 	nMigrationsDown := schema.GetNumMigrationsDown(config.DatabaseURL)
 	if nMigrationsDown > 0 {
-		stdLog.Printf("A database migration DOWN to an earlier version of the schema is required to run this version (%v) of Horizon. Consult the Changelog (https://github.com/stellar/go/blob/master/services/horizon/CHANGELOG.md) for more information.", apkg.Version())
-		stdLog.Printf("In order to migrate the database DOWN, using the HIGHEST version number of Horizon you have installed (not this binary), run \"horizon db migrate down %v\".", nMigrationsDown)
+		stdLog.Printf("version=%s A database migration DOWN to an earlier version of the schema is required to run this version (%v) of Horizon. Consult the Changelog (https://github.com/stellar/go/blob/master/services/horizon/CHANGELOG.md) for more information.", apkg.Version(), apkg.Version())
+		stdLog.Printf("version=%s In order to migrate the database DOWN, using the HIGHEST version number of Horizon you have installed (not this binary), run \"horizon db migrate down %v\".", apkg.Version(), nMigrationsDown)
 		os.Exit(1)
 	}
 }
@@ -416,7 +416,7 @@ func initConfig() {
 		if err == nil {
 			log.DefaultLogger.Logger.Out = logFile
 		} else {
-			stdLog.Fatalf("Failed to open file to log: %s", err)
+			stdLog.Fatalf("version=%s Failed to open file to log: %s", apkg.Version(), err)
 		}
 	}
 
@@ -424,7 +424,7 @@ func initConfig() {
 	log.DefaultLogger.Logger.SetLevel(config.LogLevel)
 
 	if config.IngestStateReaderTempSet != "memory" && config.IngestStateReaderTempSet != "postgres" {
-		log.Fatal("Invalid `ingest-state-reader-temp-set` value: " + config.IngestStateReaderTempSet)
+		stdLog.Fatalf("version=%s Invalid `ingest-state-reader-temp-set` value: %s", apkg.Version(), config.IngestStateReaderTempSet)
 	}
 
 	// Configure DB params. When config.MaxDBConnections is set, set other

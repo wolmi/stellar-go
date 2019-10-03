@@ -37,7 +37,7 @@ var dbBackfillCmd = &cobra.Command{
 	Short: "backfills horizon history for COUNT ledgers",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
-			log.Println("Missing COUNT. Usage: backfill [COUNT].")
+			log.Printf("version=%s Missing COUNT. Usage: backfill [COUNT].", apkg.Version())
 			return
 		}
 
@@ -80,21 +80,21 @@ var dbInitAssetStatsCmd = &cobra.Command{
 			HistorySession: hdb,
 		}
 
-		log.Println("Getting assets from core DB...")
+		log.Printf("version=%s Getting assets from core DB...\n", apkg.Version())
 
 		count, err := assetStats.AddAllAssetsFromCore()
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		log.Printf("Updating %d assets...\n", count)
+		log.Printf("version=%s Updating %d assets...\n", apkg.Version(), count)
 
 		err = assetStats.UpdateAssetStats()
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		log.Printf("Added stats for %d assets...\n", count)
+		log.Printf("version=%s Added stats for %d assets...\n", apkg.Version(), count)
 	},
 }
 
@@ -108,7 +108,7 @@ var dbClearCmd = &cobra.Command{
 			IngestFailedTransactions: config.IngestFailedTransactions,
 		}).ClearAll()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("version=%s %v", apkg.Version(), err)
 		}
 	},
 }
@@ -120,18 +120,18 @@ var dbInitCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		db, err := sql.Open("postgres", viper.GetString("db-url"))
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("version=%s %v", apkg.Version(), err)
 		}
 
 		numMigrationsRun, err := schema.Migrate(db, schema.MigrateUp, 0)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("version=%s %v", apkg.Version(), err)
 		}
 
 		if numMigrationsRun == 0 {
-			log.Println("No migrations applied.")
+			log.Printf("version=%s No migrations applied.\n", apkg.Version())
 		} else {
-			log.Printf("Successfully applied %d migrations.\n", numMigrationsRun)
+			log.Printf("version=%s Successfully applied %d migrations.\n", apkg.Version(), numMigrationsRun)
 		}
 	},
 }
@@ -174,9 +174,9 @@ var dbMigrateCmd = &cobra.Command{
 		}
 
 		if numMigrationsRun == 0 {
-			log.Println("No migrations applied.")
+			log.Printf("version=%s No migrations applied.\n", apkg.Version())
 		} else {
-			log.Printf("Successfully applied %d migrations.\n", numMigrationsRun)
+			log.Printf("version=%s Successfully applied %d migrations.\n", apkg.Version(), numMigrationsRun)
 		}
 	},
 }
@@ -188,7 +188,7 @@ var dbReapCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		err := initApp().DeleteUnretainedHistory()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("version=%s %v", apkg.Version(), err)
 		}
 	},
 }
@@ -225,7 +225,7 @@ var dbReingestCmd = &cobra.Command{
 				seq, err := strconv.Atoi(arg)
 				if err != nil {
 					cmd.Usage()
-					log.Fatalf(`Invalid sequence number "%s"`, arg)
+					log.Fatalf(`version=%s Invalid sequence number "%s"`, apkg.Version(), arg)
 				}
 				argsInt32 = append(argsInt32, int32(seq))
 			}
@@ -250,7 +250,7 @@ var dbReingestRangeCmd = &cobra.Command{
 			seq, err := strconv.Atoi(arg)
 			if err != nil {
 				cmd.Usage()
-				log.Fatalf(`Invalid sequence number "%s"`, arg)
+				log.Fatalf(`version=%s Invalid sequence number "%s"`, apkg.Version(), arg)
 			}
 			argsInt32 = append(argsInt32, int32(seq))
 		}
@@ -265,7 +265,7 @@ var dbReingestOutdatedCmd = &cobra.Command{
 	Long:  "reingests ledgers whose version is less than the current version up to a million ledgers",
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) > 0 {
-			log.Println("ignoring args...")
+			log.Printf("version=%s ignoring args...\n", apkg.Version())
 		}
 
 		reingest(byOutdated)
@@ -290,17 +290,17 @@ func init() {
 func ingestSystem(ingestConfig ingest.Config) *ingest.System {
 	hdb, err := db.Open("postgres", config.DatabaseURL)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("version=%s %v", apkg.Version(), err)
 	}
 
 	cdb, err := db.Open("postgres", config.StellarCoreDatabaseURL)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("version=%s %v", apkg.Version(), err)
 	}
 
 	passphrase := viper.GetString("network-passphrase")
 	if passphrase == "" {
-		log.Fatal("network-passphrase is blank: reingestion requires manually setting passphrase")
+		log.Fatalf("version=%s network-passphrase is blank: reingestion requires manually setting passphrase", apkg.Version())
 	}
 
 	return ingest.New(passphrase, config.StellarCoreURL, cdb, hdb, ingestConfig)
@@ -346,7 +346,7 @@ func reingest(cmd reingestType, args ...int32) {
 		case byRange:
 			// should already be checked by the caller
 			if len(args) != 2 {
-				log.Fatal(`"horizon db reingest range" command requires 2 sequence numbers after "range"`)
+				log.Fatalf(`version=%s "horizon db reingest range" command requires 2 sequence numbers after "range"`, apkg.Version())
 			}
 
 			err = reingestRange(i, args[0], args[1])
@@ -368,7 +368,7 @@ func reingest(cmd reingestType, args ...int32) {
 
 		case err := <-done:
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("version=%s %v", apkg.Version(), err)
 			}
 			os.Exit(0)
 		}
