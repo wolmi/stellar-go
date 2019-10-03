@@ -6,6 +6,12 @@ file.  This project adheres to [Semantic Versioning](http://semver.org/).
 As this project is pre 1.0, breaking changes may happen for minor version
 bumps.  A breaking change will get clearly notified in this log.
 
+## v0.21.2
+
+Added version on every log entry, the formate will be:
+
+`version=x.y.z <log mgessage>`
+
 ## v0.21.1
 
 * Fixes a bug in initial schema migration file.
