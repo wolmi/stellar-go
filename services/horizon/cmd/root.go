@@ -42,7 +42,7 @@ func validateBothOrNeither(option1, option2 string) {
 		stdLog.Fatalf("version=%s Invalid config: %s = %s, but corresponding option %s is not configured", apkg.Version(), option1, arg1, option2)
 	}
 	if arg1 == "" && arg2 != "" {
-		stdLog.Fatalf("version=%s Invalid config: %s = %s, but corresponding option %s is not configured",apkg.Version() , option2, arg2, option1)
+		stdLog.Fatalf("version=%s Invalid config: %s = %s, but corresponding option %s is not configured", apkg.Version(), option2, arg2, option1)
 	}
 }
 
