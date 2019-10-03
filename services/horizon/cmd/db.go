@@ -16,6 +16,7 @@ import (
 	"github.com/stellar/go/support/db"
 	"github.com/stellar/go/support/errors"
 	hlog "github.com/stellar/go/support/log"
+	apkg "github.com/stellar/go/support/app"
 )
 
 type reingestType int
@@ -410,10 +411,10 @@ func reingestRange(i *ingest.System, from, to int32) error {
 		}
 
 		localLog := hlog.WithFields(hlog.F{
-			"version": apkg.Version(),
-			"id":   workerID,
-			"from": lr.from,
-			"to":   lr.to,
+			"version":  apkg.Version(),
+			"id":       workerID,
+			"from":     lr.from,
+			"to":       lr.to,
 		})
 
 		localLog.Info("Worker starting range...")
