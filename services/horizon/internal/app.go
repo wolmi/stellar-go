@@ -31,6 +31,7 @@ import (
 	"github.com/stellar/go/support/log"
 	"github.com/stellar/throttled"
 	graceful "gopkg.in/tylerb/graceful.v1"
+	apkg "github.com/stellar/go/support/app"
 )
 
 // App represents the root of the state of a horizon instance.
@@ -382,6 +383,7 @@ func (a *App) init() {
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 
 	// log
+  log.DefaultLogger = log.DefaultLogger.WithField("version", apkg.Version())
 	log.DefaultLogger.Logger.Level = a.config.LogLevel
 	log.DefaultLogger.Logger.Hooks.Add(logmetrics.DefaultMetrics)
 
