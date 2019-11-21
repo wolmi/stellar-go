@@ -22,16 +22,31 @@ import (
 type pType string
 
 const (
-	statePipeline  pType = "state_pipeline"
-	ledgerPipeline pType = "ledger_pipeline"
+	statePipeline                   pType = "state_pipeline"
+	ledgerPipeline                  pType = "ledger_pipeline"
+	stateVerificationErrorThreshold       = 3
 )
 
-func accountForSignerStateNode(q *history.Q) *supportPipeline.PipelineNode {
+func accountsStateNode(q *history.Q) *supportPipeline.PipelineNode {
 	return pipeline.StateNode(&processors.EntryTypeFilter{Type: xdr.LedgerEntryTypeAccount}).
 		Pipe(
 			pipeline.StateNode(&horizonProcessors.DatabaseProcessor{
+				AccountsQ: q,
+				Action:    horizonProcessors.Accounts,
+			}),
+			pipeline.StateNode(&horizonProcessors.DatabaseProcessor{
 				SignersQ: q,
 				Action:   horizonProcessors.AccountsForSigner,
+			}),
+		)
+}
+
+func dataDBStateNode(q *history.Q) *supportPipeline.PipelineNode {
+	return pipeline.StateNode(&processors.EntryTypeFilter{Type: xdr.LedgerEntryTypeData}).
+		Pipe(
+			pipeline.StateNode(&horizonProcessors.DatabaseProcessor{
+				DataQ:  q,
+				Action: horizonProcessors.Data,
 			}),
 		)
 }
@@ -55,33 +70,32 @@ func orderBookGraphStateNode(graph *orderbook.OrderBookGraph) *supportPipeline.P
 		)
 }
 
+func trustLinesDBStateNode(q *history.Q) *supportPipeline.PipelineNode {
+	return pipeline.StateNode(&processors.EntryTypeFilter{Type: xdr.LedgerEntryTypeTrustline}).
+		Pipe(
+			pipeline.StateNode(&horizonProcessors.DatabaseProcessor{
+				TrustLinesQ: q,
+				AssetStatsQ: q,
+				Action:      horizonProcessors.TrustLines,
+			}),
+		)
+}
+
 func buildStatePipeline(historyQ *history.Q, graph *orderbook.OrderBookGraph) *pipeline.StatePipeline {
 	statePipeline := &pipeline.StatePipeline{}
 
 	statePipeline.SetRoot(
 		pipeline.StateNode(&processors.RootProcessor{}).
 			Pipe(
-				accountForSignerStateNode(historyQ),
+				accountsStateNode(historyQ),
+				dataDBStateNode(historyQ),
 				orderBookDBStateNode(historyQ),
 				orderBookGraphStateNode(graph),
+				trustLinesDBStateNode(historyQ),
 			),
 	)
 
 	return statePipeline
-}
-
-func accountForSignerLedgerNode(q *history.Q) *supportPipeline.PipelineNode {
-	return pipeline.LedgerNode(&horizonProcessors.DatabaseProcessor{
-		SignersQ: q,
-		Action:   horizonProcessors.AccountsForSigner,
-	})
-}
-
-func orderBookDBLedgerNode(q *history.Q) *supportPipeline.PipelineNode {
-	return pipeline.LedgerNode(&horizonProcessors.DatabaseProcessor{
-		OffersQ: q,
-		Action:  horizonProcessors.Offers,
-	})
 }
 
 func orderBookGraphLedgerNode(graph *orderbook.OrderBookGraph) *supportPipeline.PipelineNode {
@@ -99,8 +113,15 @@ func buildLedgerPipeline(historyQ *history.Q, graph *orderbook.OrderBookGraph) *
 				// This subtree will only run when `IngestUpdateDatabase` is set.
 				pipeline.LedgerNode(&horizonProcessors.ContextFilter{horizonProcessors.IngestUpdateDatabase}).
 					Pipe(
-						accountForSignerLedgerNode(historyQ),
-						orderBookDBLedgerNode(historyQ),
+						pipeline.LedgerNode(&horizonProcessors.DatabaseProcessor{
+							AccountsQ:   historyQ,
+							DataQ:       historyQ,
+							OffersQ:     historyQ,
+							SignersQ:    historyQ,
+							TrustLinesQ: historyQ,
+							AssetStatsQ: historyQ,
+							Action:      horizonProcessors.All,
+						}),
 					),
 				orderBookGraphLedgerNode(graph),
 			),
@@ -112,6 +133,7 @@ func buildLedgerPipeline(historyQ *history.Q, graph *orderbook.OrderBookGraph) *
 func preProcessingHook(
 	ctx context.Context,
 	pipelineType pType,
+	system *System,
 	historySession *db.Session,
 ) (context.Context, error) {
 	historyQ := &history.Q{historySession}
@@ -142,6 +164,10 @@ func preProcessingHook(
 		// from a database is done outside the pipeline.
 		updateDatabase = true
 	} else {
+		// mark the system as ready because we have progressed to running
+		// the ledger pipeline
+		system.setStateReady()
+
 		if lastIngestedLedger+1 == ledgerSeq {
 			// lastIngestedLedger+1 == ledgerSeq what means that this instance
 			// is the main ingesting instance in this round and should update a
@@ -229,7 +255,7 @@ func postProcessingHook(
 		}
 	}
 
-	err = graph.Apply()
+	err = graph.Apply(ledgerSeq)
 	if err != nil {
 		return errors.Wrap(err, "Error applying order book changes")
 	}
@@ -246,17 +272,29 @@ func postProcessingHook(
 		pipelineType == ledgerPipeline && // it's a ledger pipeline...
 		isMaster && // it's a master ingestion node (to verify on a single node only)...
 		historyarchive.IsCheckpoint(ledgerSeq) { // it's a checkpoint ledger.
-		go func() {
-			err := system.verifyState()
+		go func(offerEntries []xdr.OfferEntry) {
+			graphOffers := map[xdr.Int64]xdr.OfferEntry{}
+			for _, entry := range offerEntries {
+				graphOffers[entry.OfferId] = entry
+			}
+
+			err := system.verifyState(graphOffers)
 			if err != nil {
+				errorCount := system.incrementStateVerificationErrors()
 				switch errors.Cause(err).(type) {
 				case verify.StateError:
 					markStateInvalid(historySession, err)
 				default:
-					log.WithField("err", err).Error("State verification errored")
+					logger := log.WithField("err", err).Warn
+					if errorCount >= stateVerificationErrorThreshold {
+						logger = log.WithField("err", err).Error
+					}
+					logger("State verification errored")
 				}
+			} else {
+				system.resetStateVerificationErrors()
 			}
-		}()
+		}(graph.Offers())
 	}
 
 	log.WithFields(ilog.F{"ledger": ledgerSeq, "type": pipelineType}).Info("Processed ledger")
@@ -289,7 +327,7 @@ func addPipelineHooks(
 	}
 
 	p.AddPreProcessingHook(func(ctx context.Context) (context.Context, error) {
-		return preProcessingHook(ctx, pipelineType, historySession)
+		return preProcessingHook(ctx, pipelineType, system, historySession)
 	})
 
 	p.AddPostProcessingHook(func(ctx context.Context, err error) error {

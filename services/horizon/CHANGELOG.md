@@ -6,11 +6,55 @@ file.  This project adheres to [Semantic Versioning](http://semver.org/).
 As this project is pre 1.0, breaking changes may happen for minor version
 bumps.  A breaking change will get clearly notified in this log.
 
-## v0.21.2
+## v0.23.2
 
 Added version on every log entry, the formate will be:
 
 `version=x.y.z <log mgessage>`
+
+## v0.23.1
+
+* Add `ReadTimeout` to Horizon HTTP server configuration to fix potential DoS vector.
+
+## v0.23.0
+
+* New features in experimental ingestion (to enable: set `--enable-experimental-ingestion` CLI param or `ENABLE_EXPERIMENTAL_INGESTION=true` env variable):
+  * All state-related endpoints (i.e. ledger entries) are now served from Horizon DB (except `/account/{account_id}`)
+
+  * `/order_book` offers data is served from in-memory store ([#1761](https://github.com/stellar/go/pull/1761))
+
+  * Add `Latest-Ledger` header with the sequence number of the most recent ledger processed by the experimental ingestion system. Endpoints built on the experimental ingestion system will always respond with data which is consistent with the ledger in `Latest-Ledger` ([#1830](https://github.com/stellar/go/pull/1830))
+
+  * Add experimental support for filtering accounts who are trustees to an asset via `/accounts`. Example:\
+  `/accounts?asset=COP:GC2GFGZ5CZCFCDJSQF3YYEAYBOS3ZREXJSPU7LUJ7JU3LP3BQNHY7YKS`\
+  returns all accounts who have a trustline to the asset `COP` issued by account `GC2GFG...` ([#1835](https://github.com/stellar/go/pull/1835))
+
+  * Experimental "Accounts For Signers" end-point now returns a full account resource ([#1876](https://github.com/stellar/go/issues/1875))
+* Prevent "`multiple response.WriteHeader calls`" errors when streaming ([#1870](https://github.com/stellar/go/issues/1870))
+* Fix an interpolation bug in `/fee_stats` ([#1857](https://github.com/stellar/go/pull/1857))
+* Fix a bug in `/paths/strict-send` where occasionally bad paths were returned ([#1863](https://github.com/stellar/go/pull/1863))
+
+## v0.22.2
+
+* Fixes a bug in accounts for signer ingestion processor.
+
+## v0.22.1
+
+* Fixes a bug in path payment ingestion code.
+
+## v0.22.0
+
+* Adds support for Stellar Protocol v12.
+
+### Scheduled Breaking Changes
+
+* The following operation type names have been deprecated: `path_payment`, `manage_offer` and `create_passive_offer`. The names will be changed to: `path_payment_strict_receive`, `manage_sell_offer` and `create_passive_sell_offer` in 0.25.0. This has been previously scheduled for 0.22.0 release.
+* `fee_paid` field on Transaction resource has been deprecated and will be removed in 0.23.0 (previously scheduled for 0.22.0). Please use new fields added in 0.18.0: `max_fee` that defines the maximum fee the source account is willing to pay and `fee_charged` that defines the fee that was actually paid for a transaction. See [CAP-0005](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0005.md) for more information.
+* The type for the following attributes will be changed from `int64` to `string` in 0.23.0 (previously scheduled for 0.22.0):
+  - Attribute `offer_id` in [manage buy offer](https://www.stellar.org/developers/horizon/reference/resources/operation.html#manage-buy-offer) and [manage sell offer](https://www.stellar.org/developers/horizon/reference/resources/operation.html#manage-sell-offer) operations.
+  - Attribute `offer_id` in `Trade` effect.
+  - Attribute `id` in [Offer](https://www.stellar.org/developers/horizon/reference/resources/offer.html) resource.
+  - Attribute `timestamp` and `trade_count` in [Trade Aggregation](https://www.stellar.org/developers/horizon/reference/resources/trade_aggregation.html) resource.
 
 ## v0.21.1
 

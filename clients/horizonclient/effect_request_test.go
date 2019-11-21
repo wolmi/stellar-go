@@ -2,9 +2,7 @@ package horizonclient
 
 import (
 	"context"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stellar/go/protocols/horizon/effects"
 	"github.com/stellar/go/support/http/httptest"
@@ -64,93 +62,6 @@ func TestEffectRequestBuildUrl(t *testing.T) {
 
 }
 
-func ExampleClient_NextEffectsPage() {
-	client := DefaultPublicNetClient
-	// all effects
-	effectRequest := EffectRequest{Limit: 20}
-	efp, err := client.Effects(effectRequest)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Print(efp)
-
-	// get next pages.
-	recordsFound := false
-	if len(efp.Embedded.Records) > 0 {
-		recordsFound = true
-	}
-	page := efp
-	// get the next page of records if recordsFound is true
-	for recordsFound {
-		// next page
-		nextPage, err := client.NextEffectsPage(page)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		page = nextPage
-		if len(nextPage.Embedded.Records) == 0 {
-			recordsFound = false
-		}
-		fmt.Println(nextPage)
-	}
-}
-
-func ExampleClient_PrevEffectsPage() {
-	client := DefaultPublicNetClient
-	// all effects
-	effectRequest := EffectRequest{Limit: 20}
-	efp, err := client.Effects(effectRequest)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Print(efp)
-
-	// get prev pages.
-	recordsFound := false
-	if len(efp.Embedded.Records) > 0 {
-		recordsFound = true
-	}
-	page := efp
-	// get the prev page of records if recordsFound is true
-	for recordsFound {
-		// prev page
-		prevPage, err := client.PrevEffectsPage(page)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		page = prevPage
-		if len(prevPage.Embedded.Records) == 0 {
-			recordsFound = false
-		}
-		fmt.Println(prevPage)
-	}
-}
-func ExampleClient_StreamEffects() {
-	client := DefaultTestNetClient
-	// all effects
-	effectRequest := EffectRequest{Cursor: "760209215489"}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		// Stop streaming after 60 seconds.
-		time.Sleep(60 * time.Second)
-		cancel()
-	}()
-
-	printHandler := func(e effects.Effect) {
-		fmt.Println(e)
-	}
-	err := client.StreamEffects(ctx, effectRequest, printHandler)
-	if err != nil {
-		fmt.Println(err)
-	}
-}
 func TestEffectRequestStreamEffects(t *testing.T) {
 	hmock := httptest.NewClient()
 	client := &Client{
@@ -232,7 +143,7 @@ func TestNextEffectsPage(t *testing.T) {
 	efp, err := client.Effects(effectRequest)
 
 	if assert.NoError(t, err) {
-		assert.Equal(t, len(efp.Embedded.Records), 2)
+		assert.Len(t, efp.Embedded.Records, 2)
 	}
 
 	hmock.On(
@@ -242,7 +153,48 @@ func TestNextEffectsPage(t *testing.T) {
 
 	nextPage, err := client.NextEffectsPage(efp)
 	if assert.NoError(t, err) {
-		assert.Equal(t, len(nextPage.Embedded.Records), 0)
+		assert.Len(t, nextPage.Embedded.Records, 0)
+	}
+}
+
+func TestSequenceBumpedNewSeq(t *testing.T) {
+	hmock := httptest.NewClient()
+	client := &Client{
+		HorizonURL: "https://localhost/",
+		HTTP:       hmock,
+	}
+	effectRequest := EffectRequest{ForAccount: "GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD"}
+	testCases := []struct {
+		desc    string
+		payload string
+	}{
+		{
+			desc:    "new_seq as a string",
+			payload: sequenceBumpedAsStringPage,
+		},
+		{
+			desc:    "new_seq as a number",
+			payload: sequenceBumpedAsNumberPage,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			hmock.On(
+				"GET",
+				"https://localhost/accounts/GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD/effects",
+			).ReturnString(200, tc.payload)
+
+			efp, err := client.Effects(effectRequest)
+
+			if assert.NoError(t, err) {
+				assert.Len(t, efp.Embedded.Records, 1)
+			}
+
+			effect, ok := efp.Embedded.Records[0].(effects.SequenceBumped)
+			assert.True(t, ok)
+			assert.Equal(t, int64(300000000000), effect.NewSeq)
+
+		})
 	}
 }
 
@@ -304,10 +256,86 @@ var firstEffectsPage = `{
         "weight": 1,
         "public_key": "GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD",
         "key": ""
-      }
+	  }
     ]
   }
 }`
+
+var sequenceBumpedAsNumberPage = `{
+	"_links": {
+	  "self": {
+		"href": "https://horizon-testnet.stellar.org/accounts/GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD/effects?cursor=&limit=10&order=asc"
+	  },
+	  "next": {
+		"href": "https://horizon-testnet.stellar.org/accounts/GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD/effects?cursor=1557363731492865-3&limit=10&order=asc"
+	  },
+	  "prev": {
+		"href": "https://horizon-testnet.stellar.org/accounts/GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD/effects?cursor=1557363731492865-1&limit=10&order=desc"
+	  }
+	},
+	"_embedded": {
+	  "records": [
+		{
+		  "_links": {
+			"operation": {
+			  "href": "https://horizon-testnet.stellar.org/operations/249108107265"
+			},
+			"succeeds": {
+			  "href": "https://horizon-testnet.stellar.org/effects?order=desc\u0026cursor=249108107265-1"
+			},
+			"precedes": {
+			  "href": "https://horizon-testnet.stellar.org/effects?order=asc\u0026cursor=249108107265-1"
+			}
+		  },
+		  "id": "0000000249108107265-0000000001",
+		  "paging_token": "249108107265-1",
+		  "account": "GCQZP3IU7XU6EJ63JZXKCQOYT2RNXN3HB5CNHENNUEUHSMA4VUJJJSEN",
+		  "type": "sequence_bumped",
+		  "type_i": 43,
+		  "created_at": "2019-06-03T16:36:24Z",
+		  "new_seq": 300000000000
+		}
+	  ]
+	}
+  }`
+
+var sequenceBumpedAsStringPage = `{
+	"_links": {
+	  "self": {
+		"href": "https://horizon-testnet.stellar.org/accounts/GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD/effects?cursor=&limit=10&order=asc"
+	  },
+	  "next": {
+		"href": "https://horizon-testnet.stellar.org/accounts/GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD/effects?cursor=1557363731492865-3&limit=10&order=asc"
+	  },
+	  "prev": {
+		"href": "https://horizon-testnet.stellar.org/accounts/GCDIZFWLOTBWHTPODXCBH6XNXPFMSQFRVIDRP3JLEKQZN66G7NF3ANOD/effects?cursor=1557363731492865-1&limit=10&order=desc"
+	  }
+	},
+	"_embedded": {
+	  "records": [
+		{
+		  "_links": {
+			"operation": {
+			  "href": "https://horizon-testnet.stellar.org/operations/249108107265"
+			},
+			"succeeds": {
+			  "href": "https://horizon-testnet.stellar.org/effects?order=desc\u0026cursor=249108107265-1"
+			},
+			"precedes": {
+			  "href": "https://horizon-testnet.stellar.org/effects?order=asc\u0026cursor=249108107265-1"
+			}
+		  },
+		  "id": "0000000249108107265-0000000001",
+		  "paging_token": "249108107265-1",
+		  "account": "GCQZP3IU7XU6EJ63JZXKCQOYT2RNXN3HB5CNHENNUEUHSMA4VUJJJSEN",
+		  "type": "sequence_bumped",
+		  "type_i": 43,
+		  "created_at": "2019-06-03T16:36:24Z",
+		  "new_seq": "300000000000"
+		}
+	  ]
+	}
+  }`
 
 var emptyEffectsPage = `{
   "_links": {

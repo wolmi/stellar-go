@@ -28,12 +28,18 @@ const (
 	//
 	// Version history:
 	// - 1: Initial version
-	// - 2: We added the orderbook, offers processors and distributed
-	//      ingestion.
-	// - 3: Fixes a bug that could potentialy result in invalid state
+	// - 2: Added the orderbook, offers processors and distributed ingestion.
+	// - 3: Fixed a bug that could potentialy result in invalid state
 	//      (#1722). Update the version to clear the state.
-	// - 4: Fixes a bug in AccountSignersChanged method.
-	CurrentVersion = 4
+	// - 4: Fixed a bug in AccountSignersChanged method.
+	// - 5: Added trust lines.
+	// - 6: Added accounts and accounts data.
+	// - 7: Fixes a bug in AccountSignersChanged method.
+	// - 8: Fixes AccountSigners processor to remove preauth tx signer
+	//      when preauth tx is failed.
+	// - 9: Fixes a bug in asset stats processor that counted unauthorized
+	//      trustlines.
+	CurrentVersion = 9
 )
 
 var log = ilog.DefaultLogger.WithField("service", "expingest")
@@ -84,10 +90,14 @@ type System struct {
 	historySession dbSession
 	graph          *orderbook.OrderBookGraph
 	retry          retry
+	stateReady     bool
+	stateReadyLock sync.RWMutex
 
 	// stateVerificationRunning is true when verification routine is currently
 	// running.
-	stateVerificationMutex   sync.Mutex
+	stateVerificationMutex sync.Mutex
+	// number of consecutive state verification runs which encountered errors
+	stateVerificationErrors  int
 	stateVerificationRunning bool
 	disableStateVerification bool
 }
@@ -278,7 +288,7 @@ func (s *System) Run() {
 			log.WithField("last_ledger", lastIngestedLedger).
 				Info("Resuming ingestion system from last processed ledger...")
 
-			err = loadOrderBookGraphFromDB(s.historyQ, s.graph)
+			err = loadOrderBookGraphFromDB(s.historyQ, s.graph, lastIngestedLedger)
 			if err != nil {
 				return errors.Wrap(err, "Error loading order book graph from db")
 			}
@@ -289,7 +299,11 @@ func (s *System) Run() {
 	})
 }
 
-func loadOrderBookGraphFromDB(historyQ dbQ, graph *orderbook.OrderBookGraph) error {
+func loadOrderBookGraphFromDB(
+	historyQ dbQ,
+	graph *orderbook.OrderBookGraph,
+	lastIngestedLedger uint32,
+) error {
 	defer graph.Discard()
 
 	log.Info("Loading offers from a database into memory store...")
@@ -316,7 +330,7 @@ func loadOrderBookGraphFromDB(historyQ dbQ, graph *orderbook.OrderBookGraph) err
 		})
 	}
 
-	err = graph.Apply()
+	err = graph.Apply(lastIngestedLedger)
 	if err == nil {
 		log.WithField(
 			"duration",
@@ -345,6 +359,32 @@ func (s *System) resumeFromLedger(lastIngestedLedger uint32) {
 		log.Info("Session shut down")
 		return nil
 	})
+}
+
+// StateReady returns true if the ingestion system has finished running it's state pipelines
+func (s *System) StateReady() bool {
+	s.stateReadyLock.RLock()
+	defer s.stateReadyLock.RUnlock()
+	return s.stateReady
+}
+
+func (s *System) setStateReady() {
+	s.stateReadyLock.Lock()
+	defer s.stateReadyLock.Unlock()
+	s.stateReady = true
+}
+
+func (s *System) incrementStateVerificationErrors() int {
+	s.stateVerificationMutex.Lock()
+	defer s.stateVerificationMutex.Unlock()
+	s.stateVerificationErrors++
+	return s.stateVerificationErrors
+}
+
+func (s *System) resetStateVerificationErrors() {
+	s.stateVerificationMutex.Lock()
+	defer s.stateVerificationMutex.Unlock()
+	s.stateVerificationErrors = 0
 }
 
 func (s *System) Shutdown() {
