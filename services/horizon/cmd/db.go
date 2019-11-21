@@ -16,6 +16,7 @@ import (
 	"github.com/stellar/go/support/db"
 	"github.com/stellar/go/support/errors"
 	hlog "github.com/stellar/go/support/log"
+	apkg "github.com/stellar/go/support/app"
 )
 
 type reingestType int
