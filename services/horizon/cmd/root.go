@@ -53,7 +53,7 @@ func pingDB(db *sql.DB) {
 		}
 		time.Sleep(time.Second)
 		if attempt+1 < maxDBPingAttempts {
-			stdLog.Println("version=%s Waiting for a horizon DB connection...", apkg.Version())
+			stdLog.Printf("version=%s Waiting for a horizon DB connection...", apkg.Version())
 		}
 	}
 
