@@ -13,10 +13,10 @@ import (
 	"github.com/stellar/go/services/horizon/internal/db2/schema"
 	"github.com/stellar/go/services/horizon/internal/ingest"
 	"github.com/stellar/go/services/horizon/internal/util"
+	apkg "github.com/stellar/go/support/app"
 	"github.com/stellar/go/support/db"
 	"github.com/stellar/go/support/errors"
 	hlog "github.com/stellar/go/support/log"
-	apkg "github.com/stellar/go/support/app"
 )
 
 type reingestType int
